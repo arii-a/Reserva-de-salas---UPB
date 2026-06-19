@@ -1,0 +1,79 @@
+name: Reserva diaria
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # 8pm Bolivia (UTC 00:00)
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install msmtp
+        run: sudo apt-get update && sudo apt-get install -y msmtp
+
+      - name: Configure msmtp # configurando para mandar correo en caso de error
+        run: |
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth on
+          tls on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+
+          account gmail
+          host smtp.gmail.com
+          port 587
+          from ${{ secrets.EMAIL }}
+          user ${{ secrets.EMAIL }}
+          password ${{ secrets.EMAIL_PASS }}
+
+          account default : gmail
+          EOF
+
+          chmod 600 ~/.msmtprc
+
+      - name: Run script
+        run: |
+          # RESERVA 1
+          curl -s -X POST "https://atari.scz.upb.edu/student_reservation.php" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "room=6" \
+            --data-urlencode "first_name=ariana" \
+            --data-urlencode "last_name=mendivil" \
+            --data-urlencode "code=80001" \
+            --data-urlencode "schedule=12:15-14:15" \
+            --data-urlencode "purpose=estudio" > respuesta1.html
+
+          RES1_OK=false
+          if grep -Fq "¡Reserva realizada!" respuesta1.html; then
+            echo "RESERVA 1 OK"
+            RES1_OK=true
+          else
+            echo "RESERVA 1 FALLÓ"
+          fi
+
+          # RESERVA 2
+          curl -s -X POST "https://atari.scz.upb.edu/student_reservation.php" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "room=6" \
+            --data-urlencode "first_name=ariana" \
+            --data-urlencode "last_name=mendivil" \
+            --data-urlencode "code=80001" \
+            --data-urlencode "schedule=14:30-16:30" \
+            --data-urlencode "purpose=estudio" > respuesta2.html
+
+          RES2_OK=false
+          if grep -Fq "¡Reserva realizada!" respuesta2.html; then
+            echo "RESERVA 2 OK"
+            RES2_OK=true
+          else
+            echo "RESERVA 2 FALLÓ"
+          fi
+
+          # ALERTA (si falla alguna reserva)
+          if [ "$RES1_OK" = false ] || [ "$RES2_OK" = false ]; then
+            echo "Fallo en reservas $(date)" | msmtp ariana.mendivil@gmail.com,mnft.michelle@gmail.com
+          else
+            echo "Ambas reservas OK"
+          fi
